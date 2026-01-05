@@ -19,7 +19,7 @@ ActiveRecord::Schema[8.1].define(version: 2025_11_13_155515) do
     t.string "ip_address"
     t.datetime "updated_at", null: false
     t.string "user_agent"
-    t.integer "user_id", null: false
+    t.bigint "user_id", null: false
     t.index ["user_id"], name: "index_sessions_on_user_id"
   end
 

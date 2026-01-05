@@ -22,7 +22,7 @@ servers:
 #
 proxy:
   ssl: true
-  host: appinsnotify.two-g.ru
+  host: insnotify.two-g.ru
 
 # Where you keep your container images.
 registry:
