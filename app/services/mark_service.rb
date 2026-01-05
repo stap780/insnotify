@@ -1,0 +1,67 @@
+class MarkService
+  SECRET = Rails.application.credentials.mark[:app_secret]
+
+  # Генерирует подпись для запроса (MD5, как в InSales)
+  def self.generate_signature(user_id, email, timestamp)
+    message = "#{user_id}:#{email}:#{timestamp}"
+    Digest::MD5.hexdigest(message + SECRET)
+  end
+
+  # Генерирует полный URL для автологина в Mark
+  def self.mark_login_url(user, return_url: nil)
+    timestamp = Time.now.to_i
+    signature = generate_signature(user.id, user.email_address, timestamp)
+    base_url = Rails.application.credentials.mark[:base_url]
+    
+    url = "#{base_url}/insnotify/autologin?" \
+          "uid=#{user.id}" \
+          "&email=#{CGI.escape(user.email_address)}" \
+          "&timestamp=#{timestamp}" \
+          "&signature=#{signature}"
+    url += "&return_to=#{CGI.escape(return_url)}" if return_url.present?
+    url += "&shop=#{CGI.escape(user.shop)}" if user.shop.present?
+    url
+  end
+
+  # Устанавливает связь с Mark (вызывается автоматически после установки InSales)
+  def self.install_mark_connection(user)
+    return if user.mark_installed? # Уже установлено
+    return unless user.email_address.present? # Нужен email для связи
+    return unless user.insales_api_password.present? # Нужен API password для InSales
+    
+    timestamp = Time.now.to_i
+    signature = generate_signature(user.id, user.email_address, timestamp)
+    base_url = Rails.application.credentials.mark[:base_url]
+    
+    # Получаем данные InSales для передачи в Mark
+    insales_secret_key = Rails.application.credentials.insales_app_secret
+    insales_app_identifier = Rails.application.credentials.insales_app_identifier
+    
+    install_url = "#{base_url}/insnotify/install?" \
+                  "uid=#{user.id}" \
+                  "&email=#{CGI.escape(user.email_address)}" \
+                  "&timestamp=#{timestamp}" \
+                  "&signature=#{signature}"
+    install_url += "&shop=#{CGI.escape(user.shop)}" if user.shop.present?
+    install_url += "&insales_secret_key=#{CGI.escape(insales_secret_key)}" if insales_secret_key.present?
+    install_url += "&insales_api_password=#{CGI.escape(user.insales_api_password)}" if user.insales_api_password.present?
+    install_url += "&insales_app_identifier=#{CGI.escape(insales_app_identifier)}" if insales_app_identifier.present?
+    
+    # Делаем запрос к Mark для установки (без редиректа пользователя)
+    begin
+      response = Net::HTTP.get_response(URI(install_url))
+      
+      if response.code == "200"
+        # Обновляем флаг установки в Insnotify
+        user.update_column(:mark_installed, true)
+        Rails.logger.info "Mark connection installed for user #{user.id}"
+      else
+        Rails.logger.error "Failed to install Mark connection: #{response.code}"
+      end
+    rescue => e
+      Rails.logger.error "Error installing Mark connection: #{e.message}"
+      Rails.logger.error e.backtrace.join("\n")
+    end
+  end
+end
+
